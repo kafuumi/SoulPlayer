@@ -1,15 +1,14 @@
 
 NAME = SoulPlayer
 CC = gcc
-obj = main.o list.o lyric.o
+obj = main.o lyric.o
 
 all: ${obj}
-	@echo build ${obj}
-	@${CC} -o ${NAME}  ${obj}
+	${CC} -o ${NAME} ${obj}
 
-${obj}:
+main.o: lyric.h
+lyric.o: lyric.c lyric.h
 
 .PHONY: clean
 clean:
-	@echo clean
 	-rm -f ${NAME} *.o

@@ -1,5 +1,8 @@
 #include <stdio.h>
+#include "lyric.h"
 
-int main(){
+int main() {
     printf("demo");
+    LYRIC *lyric = NULL;
+    parseLrc("./assets/lyric/spring.lrc", lyric);
 }

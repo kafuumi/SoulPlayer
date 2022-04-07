@@ -36,7 +36,7 @@ typedef struct LYRIC {
 } LYRIC;
 
 //解析lrc文件
-BOOL parseLrc(const char *file, LYRIC *lyric);
+LYRIC *parseLrc(const char *file);
 //添加歌词
 void addLyric(LYRIC *lyric, LYRIC_NODE *node);
 

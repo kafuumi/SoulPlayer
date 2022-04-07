@@ -4,7 +4,8 @@ obj = main.o lyric.o
 
 all: ${obj}
 	${CC} -o ${NAME} ${obj}
-
+debug: ${obj}
+	${CC} -g -o ${NAME} ${obj}
 main.o: lyric.h main.c
 lyric.o: lyric.c lyric.h
 

@@ -1,12 +1,13 @@
 //
 // Created by Hami Lemon on 2022/4/6.
-//
+// 解析lrc文件，生成歌词流
 
 #include "lyric.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <regex.h>
 #include <string.h>
+#include "common.h"
 
 //截取字符串字串
 char *subString(const char *src, int start, int end)
@@ -20,7 +21,7 @@ char *subString(const char *src, int start, int end)
     {
         end = strlen(src);
     }
-    char *dst = malloc(sizeof(char) * (end - start));
+    char *dst = malloc(sizeof(char) * (end - start + 1));
     for (int i = start; i < end; i++)
     {
         if (src[i] == '\0')
@@ -57,7 +58,9 @@ LYRIC *parseLrc(const char *file)
     int ret = regcomp(&infoReg, "^\\[([a-zA-Z]{2}):[[:blank:]]*(.+)][[:space:]]*$", REG_EXTENDED);
     if (ret != 0)
     {
-        // todo 错误处理
+        char buffer[256];
+        regerror(ret, &infoReg, buffer, 256);
+        fatal("正则表达式错误:", buffer);
         return NULL;
     }
     // 歌词正则
@@ -65,6 +68,9 @@ LYRIC *parseLrc(const char *file)
     ret = regcomp(&lyricReg, "^\\[([0-9]{2}):([0-9]{2}).([0-9]{2,3})][[:blank:]]*(.+)[[:space:]]*$", REG_EXTENDED);
     if (ret != 0)
     {
+        char buffer[256];
+        regerror(ret, &lyricReg, buffer, 256);
+        fatal("正则表达式错误:", buffer);
         return NULL;
     }
 
@@ -124,26 +130,45 @@ LYRIC *parseLrc(const char *file)
             LYRIC_NODE *node = malloc(sizeof(LYRIC_NODE));
             node->time = time;
             node->lyric = text;
-            //链表节点
-            LIST_NODE *lNode = malloc(sizeof(LIST_NODE));
-            lNode->data = node;
-            lNode->prev = NULL;
-            lNode->next = NULL;
+            node->prev = NULL;
+            node->next = NULL;
             //歌词链表
             if (lyric->head == NULL)
             {
-                lyric->head = lNode;
+                lyric->head = node;
             }
             else
             {
-                lyric->tail->next = lNode;
-                lNode->prev = lyric->tail;
+                lyric->tail->next = node;
+                node->prev = lyric->tail;
             }
-            lyric->tail = lNode;
+            lyric->tail = node;
         }
     }
     regfree(&infoReg);
     regfree(&lyricReg);
     fclose(fp);
     return lyric;
+}
+
+//根据计算分，秒，毫秒计算其对应的毫秒值
+int timeToMs(int m, int s, int ms);
+
+//释放内存
+void lyricFree(LYRIC *lyric)
+{
+    if (lyric == NULL)
+    {
+        return;
+    }
+    for (LYRIC_NODE *h = lyric->head; h != NULL;)
+    {
+        LYRIC_NODE *temp = h;
+        h = h->next;
+        free(temp->lyric);
+        free(temp);
+    }
+    free(lyric->artist);
+    free(lyric->title);
+    free(lyric);
 }

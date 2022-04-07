@@ -24,7 +24,8 @@ char *subString(const char *src, int start, int end)
     char *dst = malloc(sizeof(char) * (end - start + 1));
     for (int i = start; i < end; i++)
     {
-        if (src[i] == '\0')
+        //回车或结束符,退出
+        if (src[i] == '\0' || src[i] == '\n')
         {
             break;
         }
@@ -125,6 +126,9 @@ LYRIC *parseLrc(const char *file)
             free(mStr);
             free(sStr);
             free(msStr);
+            if(text == NULL){
+                continue;
+            }
 
             //歌词节点
             LYRIC_NODE *node = malloc(sizeof(LYRIC_NODE));

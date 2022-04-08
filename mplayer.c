@@ -5,56 +5,58 @@
 #include <dirent.h>
 #include <string.h>
 #include <stdio.h>
+#include <pthread.h>
+static pthread_mutex_t mutex;
+
+MPLAYER *initMplayer()
+{
+    //初始化互斥锁
+    pthread_mutex_init(&mutex, NULL);
+    //播放列表
+    SONGLIST *songList = loadSongList("./temp/", "./assets/lrc/");
+
+    MPLAYER *mplayer = malloc(sizeof(MPLAYER));
+    mplayer->fifoFd = 0;
+    mplayer->running = 0;
+    mplayer->playing = 0;
+    mplayer->songList = songList;
+    return mplayer;
+}
 //启动mplayer
 void startMplayer(MPLAYER *mplayer)
 {
     mplayer->running = 1;
-    execlp("mplayer", "mplayer", "-ac", "mad", "-slave", "-quiet", "-idle", "-input", "file=./song_fifo", NULL);
+    execlp("mplayer", "mplayer", "-ac", "mad", "-slave", "-quiet", "-idle", "-input", "file=./song_fifo", "./temp/coffe.mp3", NULL);
     mplayer->running = 0;
 }
-//获取当前播放的时间点
-void getTimePos(MPLAYER *mplayer)
+
+void sendCommand(int fd, char *cmd)
 {
-    if (mplayer->running)
-    {
-        char *cmd = "get_time_pos\n";
-        write(mplayer->fifoFd, cmd, strlen(cmd));
-    }
+    pthread_mutex_lock(&mutex);
+    write(fd, cmd, strlen(cmd));
+    pthread_mutex_unlock(&mutex);
 }
-//获取总时长
-void getTimeLength(MPLAYER *mplayer)
+
+void *sendPlayer(void *arg) //向mplayer无限的去发
 {
-    if (mplayer->running)
+    MPLAYER *player = (MPLAYER *)arg;
+
+    while (1)
     {
-        char *cmd = "get_time_length\n";
-        write(mplayer->fifoFd, cmd, strlen(cmd));
-    }
-}
-//获取当前播放进度的百分比
-void getPercentPos(MPLAYER *mplayer)
-{
-    if (mplayer->running)
-    {
-        char *cmd = "get_percent_pos\n";
-        write(mplayer->fifoFd, cmd, strlen(cmd));
-    }
-}
-//获取播放歌曲的专辑名
-void getMetaAlbum(MPLAYER *mplayer)
-{
-    if (mplayer->running)
-    {
-        char *cmd = "get_meta_album\n";
-        write(mplayer->fifoFd, cmd, strlen(cmd));
-    }
-}
-//获取播放歌曲的文件名
-void getFileName(MPLAYER *mplayer)
-{
-    if (mplayer->running)
-    {
-        char *cmd = "get_file_name\n";
-        write(mplayer->fifoFd, cmd, strlen(cmd));
+
+        if (player->playing)
+        {
+            // sendCommand(player->fifoFd, "get_time_pos\n");
+            // usleep(100 * 1000);
+            // sendCommand(player->fifoFd, "get_time_length\n");
+            // usleep(100 * 1000);
+            sendCommand(player->fifoFd, "get_percent_pos\n");
+            usleep(100 * 1000);
+            // sendCommand(player->fifoFd, "get_meta_album\n");
+            // usleep(100 * 1000);
+            // sendCommand(player->fifoFd, "get_file_name\n");
+            // usleep(100 * 1000);
+        }
     }
 }
 
@@ -69,7 +71,7 @@ void playMusic(char *file, MPLAYER *mplayer)
         strcat(cmd, "loadfile ");
         strcat(cmd, file);
         strcat(cmd, "\n");
-        write(mplayer->fifoFd, cmd, strlen(cmd));
+        sendCommand(mplayer->fifoFd, cmd);
         free(cmd);
     }
 }
@@ -92,36 +94,42 @@ void mp3ToLrc(char *path, int len)
 void quitMplayer(MPLAYER *mplayer)
 {
     char *cmd = "q\n";
-    write(mplayer->fifoFd, cmd, strlen(cmd));
+    sendCommand(mplayer->fifoFd, cmd);
 }
 
-
 //继续播放
-void unpausePlayer(MPLAYER *mplayer){
+void unpausePlayer(MPLAYER *mplayer)
+{
     //输入命令和暂停相同
     pausePlayer(mplayer);
 }
 //暂停正在播放的音乐
-void pausePlayer(MPLAYER *mplayer){
-    if(mplayer->running){
+void pausePlayer(MPLAYER *mplayer)
+{
+    if (mplayer->running)
+    {
         char *cmd = "pause\n";
-        write(mplayer->fifoFd, cmd, strlen(cmd));
+        sendCommand(mplayer->fifoFd, cmd);
     }
 }
 
 //后退，前进
-void backMusic(MPLAYER *mplayer){
-    if(mplayer->running){
+void backMusic(MPLAYER *mplayer)
+{
+    if (mplayer->running)
+    {
         //后退5秒
         char *cmd = "seek -5\n";
-        write(mplayer->fifoFd, cmd, strlen(cmd));
+        sendCommand(mplayer->fifoFd, cmd);
     }
 }
-void aheadMusic(MPLAYER *mplayer){
-    if(mplayer->running){
+void aheadMusic(MPLAYER *mplayer)
+{
+    if (mplayer->running)
+    {
         //前进5秒
         char *cmd = "seek 5\n";
-        write(mplayer->fifoFd, cmd, strlen(cmd));
+        sendCommand(mplayer->fifoFd, cmd);
     }
 }
 
@@ -180,5 +188,32 @@ SONGLIST *loadSongList(char *base, char *lrcBase)
             songList->num++;
         }
     }
+    songList->now = songList->head;
     return songList;
+}
+
+//释放内存
+void freeMplayer(MPLAYER *mplayer)
+{
+    if (mplayer == NULL)
+    {
+        return;
+    }
+    SONGLIST *songList = mplayer->songList;
+    if (songList != NULL)
+    {
+        for (SONG *h = songList->head; h != NULL;)
+        {
+            SONG *temp = h;
+            h = h->next;
+
+            free(temp->lrc);
+            free(temp->path);
+            free(temp);
+        }
+    }
+    free(songList);
+    free(mplayer);
+
+    pthread_mutex_destroy(&mutex);
 }

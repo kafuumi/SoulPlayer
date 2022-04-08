@@ -54,7 +54,7 @@ LYRIC *parseLrc(const char *file)
     {
         return NULL;
     }
-    //歌词信息正则，\[(两个小写字母):任意个空格(任意字符)]任意个空字符
+    //歌词信息正则 [ar:author]
     regex_t infoReg;
     int ret = regcomp(&infoReg, "^\\[([a-zA-Z]{2}):[[:blank:]]*(.+)][[:space:]]*$", REG_EXTENDED);
     if (ret != 0)
@@ -64,7 +64,7 @@ LYRIC *parseLrc(const char *file)
         fatal("正则表达式错误:", buffer);
         return NULL;
     }
-    // 歌词正则
+    // 歌词正则 [00:00.00] xxxx
     regex_t lyricReg;
     ret = regcomp(&lyricReg, "^\\[([0-9]{2}):([0-9]{2}).([0-9]{2,3})][[:blank:]]*(.+)[[:space:]]*$", REG_EXTENDED);
     if (ret != 0)
@@ -154,9 +154,6 @@ LYRIC *parseLrc(const char *file)
     fclose(fp);
     return lyric;
 }
-
-//根据计算分，秒，毫秒计算其对应的毫秒值
-int timeToMs(int m, int s, int ms);
 
 //释放内存
 void lyricFree(LYRIC *lyric)

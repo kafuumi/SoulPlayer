@@ -26,30 +26,21 @@ typedef struct SONGLIST
 typedef struct MPLAYER
 {
     //无名管道
-    int pepeFd[2];
+    int pipeFd[2];
     //有名管道
     int fifoFd;
     //是否正在运行
     int running;
+    //是否正在播放
+    int playing;
     SONGLIST *songList;
 } MPLAYER;
 //启动mplayer
 void startMplayer(MPLAYER *mplayer);
 
-//获取当前播放的时间点
-void getTimePos(MPLAYER *mplayer);
-
-//获取总时长
-void getTimeLength(MPLAYER *mplayer);
-
-//获取当前播放进度的百分比
-void getPercentPos(MPLAYER *mplayer);
-
-//获取播放歌曲的专辑名
-void getMetaAlbum(MPLAYER *mplayer);
-
-//获取播放歌曲的文件名
-void getFileName(MPLAYER *mplayer);
+MPLAYER *initMplayer();
+//发送指令
+void *sendPlayer(void *arg);
 
 //播放音乐
 void playMusic(char *file, MPLAYER *mplayer);
@@ -70,7 +61,10 @@ void aheadMusic(MPLAYER *mplayer);
 //结束mplayer
 void quitMplayer(MPLAYER *mplayer);
 //获取播放列表
-//dir歌曲文件所在的目录
-//lrcBase歌词文件所在的目录
+// dir歌曲文件所在的目录
+// lrcBase歌词文件所在的目录
 SONGLIST *loadSongList(char *dir, char *lrcBase);
+
+//释放内存
+void freeMplayer(MPLAYER *mplayer);
 #endif

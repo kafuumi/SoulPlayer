@@ -32,9 +32,6 @@ typedef struct LYRIC
 //解析lrc文件
 LYRIC *parseLrc(const char *file);
 
-//根据计算分，秒，毫秒计算其对应的毫秒值
-int timeToMs(int m, int s, int ms);
-
 //释放内存
 void lyricFree(LYRIC *lyric);
 #endif // SOULPLAYER_LYRIC_H

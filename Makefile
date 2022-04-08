@@ -1,15 +1,13 @@
 NAME = SoulPlayer
 CC = gcc
 obj = main.o lyric.o common.o mplayer.o
+cflags = -Wall `pkg-config "gtk+-3.0" --cflags --libs`
 
 all: ${obj}
-	${CC} -o ${NAME} ${obj}
-debug: ${obj}
-	${CC} -g -o ${NAME} ${obj}
-main.o: lyric.h main.c
-lyric.o: lyric.c lyric.h common.h
-common.o: common.h common.c
-mplayer.o: mplayer.c mplayer.h
+	@${CC} -o ${NAME} ${obj} ${cflags}
+
+%.o: %.c
+	@${CC} -c $< -o $@ ${cflags} 
 
 # 将文件从虚拟机复制到主机中
 .PHONY: copy

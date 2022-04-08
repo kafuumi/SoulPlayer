@@ -31,6 +31,7 @@ typedef struct MPLAYER
     int fifoFd;
     //时候正在运行
     int running;
+    SONGLIST *songList;
 } MPLAYER;
 //启动mplayer
 void startMplayer(MPLAYER *mplayer);

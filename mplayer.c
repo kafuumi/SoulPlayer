@@ -2,7 +2,6 @@
 #include "common.h"
 #include <stdlib.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <dirent.h>
 #include <string.h>
 #include <stdio.h>
@@ -20,8 +19,6 @@ void getTimePos(MPLAYER *mplayer)
     {
         char *cmd = "get_time_pos\n";
         write(mplayer->fifoFd, cmd, strlen(cmd));
-        //停0.1秒
-        usleep(100 * 1000);
     }
 }
 //获取总时长
@@ -31,8 +28,6 @@ void getTimeLength(MPLAYER *mplayer)
     {
         char *cmd = "get_time_length\n";
         write(mplayer->fifoFd, cmd, strlen(cmd));
-        //停0.1秒
-        usleep(100 * 1000);
     }
 }
 //获取当前播放进度的百分比
@@ -42,8 +37,6 @@ void getPercentPos(MPLAYER *mplayer)
     {
         char *cmd = "get_percent_pos\n";
         write(mplayer->fifoFd, cmd, strlen(cmd));
-        //停0.1秒
-        usleep(100 * 1000);
     }
 }
 //获取播放歌曲的专辑名
@@ -53,8 +46,6 @@ void getMetaAlbum(MPLAYER *mplayer)
     {
         char *cmd = "get_meta_album\n";
         write(mplayer->fifoFd, cmd, strlen(cmd));
-        //停0.1秒
-        usleep(100 * 1000);
     }
 }
 //获取播放歌曲的文件名
@@ -64,8 +55,6 @@ void getFileName(MPLAYER *mplayer)
     {
         char *cmd = "get_file_name\n";
         write(mplayer->fifoFd, cmd, strlen(cmd));
-        //停0.1秒
-        usleep(100 * 1000);
     }
 }
 

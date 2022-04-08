@@ -70,7 +70,6 @@ void playMusic(char *file, MPLAYER *mplayer)
         strcat(cmd, file);
         strcat(cmd, "\n");
         write(mplayer->fifoFd, cmd, strlen(cmd));
-        usleep(100 * 1000);
         free(cmd);
     }
 }
@@ -87,6 +86,43 @@ void mp3ToLrc(char *path, int len)
     path[len - 1] = 'c';
     path[len - 2] = 'r';
     path[len - 3] = 'l';
+}
+
+//结束mplayer
+void quitMplayer(MPLAYER *mplayer)
+{
+    char *cmd = "q\n";
+    write(mplayer->fifoFd, cmd, strlen(cmd));
+}
+
+
+//继续播放
+void unpausePlayer(MPLAYER *mplayer){
+    //输入命令和暂停相同
+    pausePlayer(mplayer);
+}
+//暂停正在播放的音乐
+void pausePlayer(MPLAYER *mplayer){
+    if(mplayer->running){
+        char *cmd = "pause\n";
+        write(mplayer->fifoFd, cmd, strlen(cmd));
+    }
+}
+
+//后退，前进
+void backMusic(MPLAYER *mplayer){
+    if(mplayer->running){
+        //后退5秒
+        char *cmd = "seek -5\n";
+        write(mplayer->fifoFd, cmd, strlen(cmd));
+    }
+}
+void aheadMusic(MPLAYER *mplayer){
+    if(mplayer->running){
+        //前进5秒
+        char *cmd = "seek 5\n";
+        write(mplayer->fifoFd, cmd, strlen(cmd));
+    }
 }
 
 //获取播放列表

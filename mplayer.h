@@ -29,7 +29,7 @@ typedef struct MPLAYER
     int pepeFd[2];
     //有名管道
     int fifoFd;
-    //时候正在运行
+    //是否正在运行
     int running;
     SONGLIST *songList;
 } MPLAYER;
@@ -51,6 +51,24 @@ void getMetaAlbum(MPLAYER *mplayer);
 //获取播放歌曲的文件名
 void getFileName(MPLAYER *mplayer);
 
+//播放音乐
+void playMusic(char *file, MPLAYER *mplayer);
+
+//继续播放
+void unpausePlayer(MPLAYER *mplayer);
+//暂停正在播放的音乐
+void pausePlayer(MPLAYER *mplayer);
+
+//下一首，上一首
+void nextMusic(MPLAYER *mplayer);
+void prevMusic(MPLAYER *mplayer);
+
+//后退，前进
+void backMusic(MPLAYER *mplayer);
+void aheadMusic(MPLAYER *mplayer);
+
+//结束mplayer
+void quitMplayer(MPLAYER *mplayer);
 //获取播放列表
 //dir歌曲文件所在的目录
 //lrcBase歌词文件所在的目录

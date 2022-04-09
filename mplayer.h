@@ -1,12 +1,15 @@
+#include "lyric.h"
 #ifndef SOULPLAYER_MPLAYER_H
 #define SOULPLAYER_MPLAYER_H
 
 //歌曲
 typedef struct SONG
 {
+    //歌曲名
+    char *title;
     char *path;
-    //对应的歌词文件路径
-    char *lrc;
+    //对应的歌词
+    LYRIC_NODE *lrc;
     struct SONG *prev;
     struct SONG *next;
 } SONG;

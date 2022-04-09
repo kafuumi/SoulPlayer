@@ -12,11 +12,38 @@
 #include <gtk/gtk.h>
 #include <fcntl.h>
 #include <glib.h>
+#include <ctype.h>
 
 #define WIDTH 800
 #define HEIGHT 600
 
 static MPLAYER *mplayer = NULL;
+static GtkWidget *infoBar;
+static GtkWidget *infoBarLabel;
+static GtkWidget *play;
+//切歌互斥锁
+static pthread_mutex_t musicChangeMutex;
+//歌词切换互斥锁
+static pthread_mutex_t lyricChangeMutex;
+//当前显示的歌词
+static LYRIC_NODE *currentLyric;
+
+//歌词框
+static GtkWidget *lyricLabel;
+//歌曲信息框
+static GtkWidget *songLabel;
+
+static void alertInfo(char *msg, GtkMessageType type)
+{
+
+    gtk_label_set_text(GTK_LABEL(infoBarLabel), msg);
+    gtk_info_bar_set_message_type(GTK_INFO_BAR(infoBar), GTK_MESSAGE_ERROR);
+    if (!gtk_widget_get_visible(infoBar))
+    {
+        gtk_widget_show(infoBar);
+        gtk_widget_show(infoBarLabel);
+    }
+}
 
 //绘制背景回调
 static gboolean draw_callback(GtkWidget *widget, cairo_t *cr, gpointer data)
@@ -40,39 +67,57 @@ static void back_callback(GtkWidget *but, gpointer data)
         backMusic(mplayer);
     }
 }
+static void playButtonChange()
+{
+    if (mplayer->playing)
+    {
+        gtk_button_set_image(GTK_BUTTON(play), gtk_image_new_from_file("assets/pause.png"));
+    }
+    else
+    {
+        gtk_button_set_image(GTK_BUTTON(play), gtk_image_new_from_file("assets/play.png"));
+    }
+}
 //上一首歌曲
 static void prev_callback(GtkWidget *but, gpointer data)
 {
-    if (!mplayer->playing)
-    {
-        return;
-    }
+    pthread_mutex_lock(&musicChangeMutex);
     SONGLIST *list = mplayer->songList;
     SONG *now = list->now;
     if (now == NULL)
     {
+        pthread_mutex_unlock(&musicChangeMutex);
         return;
     }
     SONG *prev = now->prev;
-    if (prev != NULL)
+    if (prev == NULL)
     {
+        alertInfo("没有上一首！", GTK_MESSAGE_INFO);
+    }
+    else
+    {
+        mplayer->playing = 1;
+        playButtonChange();
         playMusic(prev->path, mplayer);
         list->now = prev;
+        gtk_label_set_text(GTK_LABEL(songLabel), list->now->title);
+        pthread_mutex_lock(&lyricChangeMutex);
+        currentLyric = list->now->lrc;
+        pthread_mutex_unlock(&lyricChangeMutex);
     }
+    pthread_mutex_unlock(&musicChangeMutex);
 }
 //播放/暂停
 static void play_callback(GtkWidget *but, gpointer data)
 {
     if (mplayer->playing)
     {
-        gtk_button_set_image(GTK_BUTTON(but), gtk_image_new_from_file("assets/play.png"));
         //暂停
         mplayer->playing = 0;
         pausePlayer(mplayer);
     }
     else
     {
-        gtk_button_set_image(GTK_BUTTON(but), gtk_image_new_from_file("assets/pause.png"));
         SONGLIST *songList = mplayer->songList;
         SONG *now = songList->now;
         if (now == NULL)
@@ -85,26 +130,36 @@ static void play_callback(GtkWidget *but, gpointer data)
         }
         mplayer->playing = 1;
     }
+    playButtonChange();
 }
 //下一首歌曲
 static void next_callback(GtkWidget *but, gpointer data)
 {
-    if (!mplayer->playing)
-    {
-        return;
-    }
+    pthread_mutex_lock(&musicChangeMutex);
     SONGLIST *list = mplayer->songList;
     SONG *now = list->now;
     if (now == NULL)
     {
+        pthread_mutex_unlock(&musicChangeMutex);
         return;
     }
     SONG *next = now->next;
-    if (next != NULL)
+    if (next == NULL)
     {
+        alertInfo("没有下一首!", GTK_MESSAGE_INFO);
+    }
+    else
+    {
+        mplayer->playing = 1;
+        playButtonChange();
         playMusic(next->path, mplayer);
         list->now = next;
+        gtk_label_set_text(GTK_LABEL(songLabel), list->now->title);
+        pthread_mutex_lock(&lyricChangeMutex);
+        currentLyric = list->now->lrc;
+        pthread_mutex_unlock(&lyricChangeMutex);
     }
+    pthread_mutex_unlock(&musicChangeMutex);
 }
 //前进五秒
 static void ahead_callback(GtkWidget *but, gpointer data)
@@ -121,6 +176,8 @@ static void exit_callback()
     //结束mplayer
     quitMplayer(mplayer);
     freeMplayer(mplayer);
+    pthread_mutex_destroy(&musicChangeMutex);
+    pthread_mutex_destroy(&lyricChangeMutex);
     //删除有名管道
     unlink("./song_fifo");
     int status;
@@ -128,33 +185,96 @@ static void exit_callback()
     wait(&status);
 }
 
+static void updateLyricText()
+{
+    char *lyric = currentLyric->lyric;
+    // printf("%s\n", lyric);
+    gtk_label_set_text(GTK_LABEL(lyricLabel), lyric);
+}
+
 //读取进度信息
 void *readMplayer(void *args)
 {
     GtkWidget *bar = (GtkWidget *)args;
-    char buffer[256];
+    char *buffer = malloc(sizeof(char) * 1024);
+    int len = 0;
+    int value = 0;
+    float timePoint = 0.0;
+
+    char *ansStr[2];
+    //进度信息字符串
+    ansStr[0] = malloc(sizeof(char) * 32);
+    //时间点信息
+    ansStr[1] = malloc(sizeof(char) * 32);
     while (1)
     {
-        int len = read(mplayer->pipeFd[0], buffer, 256);
+        len = read(mplayer->pipeFd[0], buffer, 1023);
         // EOF，退出
         if (len == EOF)
         {
             break;
         }
-        char temp[len + 1];
-        int i = 0;
-        for (; i < len; i++)
+        else if (len == 0)
         {
-            temp[i] = buffer[i];
+            continue;
         }
-        temp[i] = '\0';
-        int value = 0;
-        if (strncmp(temp, "ANS_PERCENT_POSITION=", 21) == 0) //进度
+        buffer[len] = '\0';
+        //分割获取的结果
+        if (strncmp(buffer, "ANS_", 4) == 0)
         {
-            sscanf(temp, "%*21s%d", &value); //裁剪
+            int i = 0;
+            for (; i < len && buffer[i] != '\n'; i++)
+            {
+                ansStr[0][i] = buffer[i];
+            }
+            ansStr[0][i] = '\0';
+            i++;
+            int j = 0;
+            for (; i < len && buffer[i] != '\n'; i++, j++)
+            {
+                ansStr[1][j] = buffer[i];
+            }
+            ansStr[1][j] = '\0';
+        }
+        else
+        {
+            continue;
+        }
+        if (strncmp(ansStr[0], "ANS_PERCENT_POSITION=", 21) == 0) //进度
+        {
+            sscanf(ansStr[0], "%*21s%d\n", &value); //裁剪
             gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(bar), value * 0.01);
+            //播放下一首
+            if (value >= 99)
+            {
+                next_callback(NULL, NULL);
+            }
+        }
+        if (strncmp(ansStr[1], "ANS_TIME_POSITION=", 18) == 0)
+        { //当前播放的时间点
+            sscanf(ansStr[1], "%*18s%f\n", &timePoint);
+            if (currentLyric != NULL)
+            {
+                pthread_mutex_lock(&lyricChangeMutex);
+                LYRIC_NODE *prev_lyric = currentLyric->prev;
+                LYRIC_NODE *next_lyric = currentLyric->next;
+                if (prev_lyric != NULL && timePoint <= prev_lyric->time)
+                {
+                    currentLyric = prev_lyric;
+                    updateLyricText();
+                }
+                else if (next_lyric != NULL && timePoint >= next_lyric->time)
+                {
+                    currentLyric = next_lyric;
+                    updateLyricText();
+                }
+                pthread_mutex_unlock(&lyricChangeMutex);
+            }
         }
     }
+    free(buffer);
+    free(ansStr[1]);
+    free(ansStr[0]);
     return NULL;
 }
 
@@ -185,7 +305,7 @@ static void on_activate(GtkApplication *app)
     g_signal_connect(drawArea, "draw", G_CALLBACK(draw_callback), NULL);
 
     //按钮
-    GtkWidget *play = gtk_button_new_with_label("");
+    play = gtk_button_new_with_label("");
     GtkWidget *back = gtk_button_new_with_label("");
     GtkWidget *prev = gtk_button_new_with_label("");
     GtkWidget *next = gtk_button_new_with_label("");
@@ -222,11 +342,49 @@ static void on_activate(GtkApplication *app)
     GtkWidget *progressBar = gtk_progress_bar_new();
     gtk_widget_set_size_request(progressBar, 600, 1);
     gtk_fixed_put(GTK_FIXED(fixed), progressBar, 100, 480);
+    //歌曲信息框
+    songLabel = gtk_label_new(mplayer->songList->now->title);
+    gtk_widget_set_size_request(songLabel, 800, 50);
+    gtk_label_set_justify(GTK_LABEL(songLabel), GTK_JUSTIFY_CENTER);
+    GtkCssProvider *songCss = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(songCss,
+                                    ".lyric{color: #FF50aa; font-size: 26px; font-weight: bold;}",
+                                    59, NULL);
+    GtkStyleContext *songLabelStyle = gtk_widget_get_style_context(songLabel);
+    gtk_style_context_add_class(songLabelStyle, "lyric");
+    gtk_style_context_add_provider(songLabelStyle, GTK_STYLE_PROVIDER(songCss), GTK_STYLE_PROVIDER_PRIORITY_FALLBACK);
+    g_object_unref(songCss);
+    gtk_label_set_single_line_mode(GTK_LABEL(songLabel), TRUE);
+    gtk_label_set_selectable(GTK_LABEL(songLabel), FALSE);
+    gtk_fixed_put(GTK_FIXED(fixed), songLabel, 0, 380);
 
     //歌词框
-    GtkWidget *lyricText = gtk_text_view_new();
-    gtk_fixed_put(GTK_FIXED(fixed), lyricText, 100, 100);
+    lyricLabel = gtk_label_new("");
+    gtk_widget_set_size_request(lyricLabel, 800, 50);
+    gtk_label_set_justify(GTK_LABEL(lyricLabel), GTK_JUSTIFY_CENTER);
+    GtkCssProvider *labelCss = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(labelCss,
+                                    ".lyric{color: #FF50a0; font-size: 32px; font-weight: bold;}",
+                                    59, NULL);
+    GtkStyleContext *lyricLabelStyle = gtk_widget_get_style_context(lyricLabel);
+    gtk_style_context_add_class(lyricLabelStyle, "lyric");
+    gtk_style_context_add_provider(lyricLabelStyle, GTK_STYLE_PROVIDER(labelCss), GTK_STYLE_PROVIDER_PRIORITY_FALLBACK);
+    g_object_unref(labelCss);
+    gtk_label_set_single_line_mode(GTK_LABEL(lyricLabel), TRUE);
+    gtk_label_set_selectable(GTK_LABEL(lyricLabel), FALSE);
+    gtk_fixed_put(GTK_FIXED(fixed), lyricLabel, 0, 420);
 
+    //消息框
+    infoBar = gtk_info_bar_new();
+    gtk_widget_set_size_request(infoBar, 300, 50);
+    gtk_info_bar_add_button(GTK_INFO_BAR(infoBar), "OK", GTK_RESPONSE_OK);
+    GtkWidget *area = gtk_info_bar_get_content_area(GTK_INFO_BAR(infoBar));
+
+    infoBarLabel = gtk_label_new("");
+    gtk_container_add(GTK_CONTAINER(area), infoBarLabel);
+    g_signal_connect(G_OBJECT(infoBar), "response", G_CALLBACK(gtk_widget_hide), NULL);
+    gtk_widget_set_no_show_all(infoBar, TRUE);
+    gtk_fixed_put(GTK_FIXED(fixed), infoBar, 500, 10);
     g_thread_new("read thread", readMplayer, progressBar);
     //向mplayer发命令
     g_thread_new("send thread", sendPlayer, mplayer);
@@ -285,6 +443,9 @@ int main(int argc, char *argv[])
     //标记正在运行mplayer
     mplayer->running = 1;
     mplayer->playing = 1;
+    currentLyric = mplayer->songList->head->lrc;
+    pthread_mutex_init(&musicChangeMutex, NULL);
+    pthread_mutex_init(&lyricChangeMutex, NULL);
     // 创建一个application
     GtkApplication *app = gtk_application_new("com.example.GtkApplication",
                                               G_APPLICATION_FLAGS_NONE);

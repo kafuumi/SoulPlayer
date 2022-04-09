@@ -1,5 +1,6 @@
 #include "mplayer.h"
 #include "common.h"
+#include "lyric.h"
 #include <stdlib.h>
 #include <unistd.h>
 #include <dirent.h>
@@ -13,7 +14,7 @@ MPLAYER *initMplayer()
     //初始化互斥锁
     pthread_mutex_init(&mutex, NULL);
     //播放列表
-    SONGLIST *songList = loadSongList("./temp/", "./assets/lrc/");
+    SONGLIST *songList = loadSongList("./assets/music/", "./assets/lyric/");
 
     MPLAYER *mplayer = malloc(sizeof(MPLAYER));
     mplayer->fifoFd = 0;
@@ -26,14 +27,15 @@ MPLAYER *initMplayer()
 void startMplayer(MPLAYER *mplayer)
 {
     mplayer->running = 1;
-    execlp("mplayer", "mplayer", "-ac", "mad", "-slave", "-quiet", "-idle", "-input", "file=./song_fifo", "./temp/coffe.mp3", NULL);
+    execlp("mplayer", "mplayer", "-ac", "mad", "-slave", "-quiet", "-idle", "-input", "file=./song_fifo", "./assets/music/coffe.mp3", NULL);
     mplayer->running = 0;
 }
 
-void sendCommand(int fd, char *cmd)
+void sendCommand(int fd, char *cmd, int len)
 {
+    //同步写入命令
     pthread_mutex_lock(&mutex);
-    write(fd, cmd, strlen(cmd));
+    write(fd, cmd, len);
     pthread_mutex_unlock(&mutex);
 }
 
@@ -46,11 +48,10 @@ void *sendPlayer(void *arg) //向mplayer无限的去发
 
         if (player->playing)
         {
-            // sendCommand(player->fifoFd, "get_time_pos\n");
             // usleep(100 * 1000);
             // sendCommand(player->fifoFd, "get_time_length\n");
             // usleep(100 * 1000);
-            sendCommand(player->fifoFd, "get_percent_pos\n");
+            sendCommand(player->fifoFd, "get_percent_pos\nget_time_pos\n", 29);
             usleep(100 * 1000);
             // sendCommand(player->fifoFd, "get_meta_album\n");
             // usleep(100 * 1000);
@@ -66,12 +67,12 @@ void playMusic(char *file, MPLAYER *mplayer)
     if (mplayer->running)
     {
         int size = strlen(file);
-        char *cmd = malloc(sizeof(char) * (size + 10));
-        cmd[0] = '\0';
-        strcat(cmd, "loadfile ");
+        char *cmd = malloc(sizeof(char) * (size + 11));
+        strcpy(cmd, "loadfile ");
         strcat(cmd, file);
-        strcat(cmd, "\n");
-        sendCommand(mplayer->fifoFd, cmd);
+        cmd[size + 9] = '\n';
+        cmd[size + 10] = '\0';
+        sendCommand(mplayer->fifoFd, cmd, size + 10);
         free(cmd);
     }
 }
@@ -94,7 +95,7 @@ void mp3ToLrc(char *path, int len)
 void quitMplayer(MPLAYER *mplayer)
 {
     char *cmd = "q\n";
-    sendCommand(mplayer->fifoFd, cmd);
+    sendCommand(mplayer->fifoFd, cmd, 2);
 }
 
 //继续播放
@@ -109,7 +110,7 @@ void pausePlayer(MPLAYER *mplayer)
     if (mplayer->running)
     {
         char *cmd = "pause\n";
-        sendCommand(mplayer->fifoFd, cmd);
+        sendCommand(mplayer->fifoFd, cmd, 6);
     }
 }
 
@@ -120,7 +121,7 @@ void backMusic(MPLAYER *mplayer)
     {
         //后退5秒
         char *cmd = "seek -5\n";
-        sendCommand(mplayer->fifoFd, cmd);
+        sendCommand(mplayer->fifoFd, cmd, 8);
     }
 }
 void aheadMusic(MPLAYER *mplayer)
@@ -129,7 +130,7 @@ void aheadMusic(MPLAYER *mplayer)
     {
         //前进5秒
         char *cmd = "seek 5\n";
-        sendCommand(mplayer->fifoFd, cmd);
+        sendCommand(mplayer->fifoFd, cmd, 7);
     }
 }
 
@@ -159,6 +160,7 @@ SONGLIST *loadSongList(char *base, char *lrcBase)
         {
             SONG *song = malloc(sizeof(SONG));
             int size = strlen(ptr->d_name);
+            song->title = subString(ptr->d_name, 0, size - 4);
             char *path = malloc(sizeof(char) * (size + dirLen + 1));
             char *lrc = malloc(sizeof(char) * (size + lrcLen + 1));
             //拼接路径
@@ -171,7 +173,7 @@ SONGLIST *loadSongList(char *base, char *lrcBase)
 
             song->path = path;
             mp3ToLrc(lrc, size + lrcLen);
-            song->lrc = lrc;
+            song->lrc = parseLrc(lrc);
             song->prev = NULL;
             song->next = NULL;
             //链表为空
@@ -189,12 +191,16 @@ SONGLIST *loadSongList(char *base, char *lrcBase)
         }
     }
     songList->now = songList->head;
+    //循环链表，实现循环播放
+    songList->head->prev = songList->tail;
+    songList->tail->next = songList->head;
     return songList;
 }
 
 //释放内存
 void freeMplayer(MPLAYER *mplayer)
 {
+    pthread_mutex_destroy(&mutex);
     if (mplayer == NULL)
     {
         return;
@@ -202,18 +208,19 @@ void freeMplayer(MPLAYER *mplayer)
     SONGLIST *songList = mplayer->songList;
     if (songList != NULL)
     {
+        //循环链表断开
+        songList->tail->next = NULL;
         for (SONG *h = songList->head; h != NULL;)
         {
             SONG *temp = h;
             h = h->next;
 
-            free(temp->lrc);
+            lyricFree(temp->lrc);
+            free(temp->title);
             free(temp->path);
             free(temp);
         }
+        free(songList);
     }
-    free(songList);
     free(mplayer);
-
-    pthread_mutex_destroy(&mutex);
 }

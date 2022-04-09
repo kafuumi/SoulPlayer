@@ -9,41 +9,10 @@
 #include <string.h>
 #include "common.h"
 
-//截取字符串字串
-char *subString(const char *src, int start, int end)
-{
-    int size = 0;
-    if (start == -1)
-    {
-        start = 0;
-    }
-    if (end == -1)
-    {
-        end = strlen(src);
-    }
-    char *dst = malloc(sizeof(char) * (end - start + 1));
-    for (int i = start; i < end; i++)
-    {
-        //回车或结束符,退出
-        if (src[i] == '\0' || src[i] == '\n')
-        {
-            break;
-        }
-        dst[size] = src[i];
-        size++;
-    }
-    dst[size] = '\0';
-    if (size == 0)
-    {
-        return NULL;
-    }
-    return dst;
-}
-
 //解析lrc文件
 // file: 文件名路径
 // lyric: 返回的歌词流
-LYRIC *parseLrc(const char *file)
+LYRIC_NODE *parseLrc(const char *file)
 {
     if (file == NULL)
     {
@@ -54,19 +23,9 @@ LYRIC *parseLrc(const char *file)
     {
         return NULL;
     }
-    //歌词信息正则 [ar:author]
-    regex_t infoReg;
-    int ret = regcomp(&infoReg, "^\\[([a-zA-Z]{2}):[[:blank:]]*(.+)][[:space:]]*$", REG_EXTENDED);
-    if (ret != 0)
-    {
-        char buffer[256];
-        regerror(ret, &infoReg, buffer, 256);
-        fatal("正则表达式错误:", buffer);
-        return NULL;
-    }
     // 歌词正则 [00:00.00] xxxx
     regex_t lyricReg;
-    ret = regcomp(&lyricReg, "^\\[([0-9]{2}):([0-9]{2}).([0-9]{2,3})][[:blank:]]*(.+)[[:space:]]*$", REG_EXTENDED);
+    int ret = regcomp(&lyricReg, "^\\[([0-9]{2}):([0-9]{2}).([0-9]{2,3})][[:blank:]]*(.+)[[:space:]]*$", REG_EXTENDED);
     if (ret != 0)
     {
         char buffer[256];
@@ -74,62 +33,34 @@ LYRIC *parseLrc(const char *file)
         fatal("正则表达式错误:", buffer);
         return NULL;
     }
-
-    LYRIC *lyric = malloc(sizeof(LYRIC));
-    lyric->head = NULL;
-    lyric->artist = "";
-    lyric->title = "";
-
     char line[LINE_NUM] = "\0";
+    LYRIC_NODE *head = NULL;
+    LYRIC_NODE *prev = NULL;
     while (fgets(line, LINE_NUM, fp) != NULL)
     {
         size_t nMatch = 5;
         regmatch_t pMatch[nMatch];
-        int ok = regexec(&infoReg, line, nMatch, pMatch, 0);
-        //歌词元数据
+        int ok = regexec(&lyricReg, line, nMatch, pMatch, 0);
         if (ok == 0)
         {
-            char *dst = subString(line, pMatch[1].rm_so, pMatch[1].rm_eo);
-            if (dst == NULL)
-            {
-                continue;
-            }
-            //歌手名
-            if (strcmp(dst, "ar") == 0)
-            {
-                char *artist = subString(line, pMatch[2].rm_so, pMatch[2].rm_eo);
-                lyric->artist = artist;
-            }
-            else if (strcmp(dst, "ti") == 0)
-            {
-                //歌曲名
-                char *title = subString(line, pMatch[2].rm_so, pMatch[2].rm_eo);
-                lyric->title = title;
-            }
-            free(dst);
-        }
-        else
-        {
             //歌词数据
-            ok = regexec(&lyricReg, line, nMatch, pMatch, 0);
             char *mStr = subString(line, pMatch[1].rm_so, pMatch[1].rm_eo);
             char *sStr = subString(line, pMatch[2].rm_so, pMatch[2].rm_eo);
             char *msStr = subString(line, pMatch[3].rm_so, pMatch[3].rm_eo);
             char *text = subString(line, pMatch[4].rm_so, pMatch[4].rm_eo);
-
             int m = atoi(mStr);
             int s = atoi(sStr);
             int ms = atoi(msStr) * 10;
             //转换成毫秒为单位的时间
-            int time = m * 60 * 1000 + s * 1000 + ms;
+            float time = m * 60 + s + ms / 1000.0;
             //释放内存
             free(mStr);
             free(sStr);
             free(msStr);
-            if(text == NULL){
+            if (text == NULL)
+            {
                 continue;
             }
-
             //歌词节点
             LYRIC_NODE *node = malloc(sizeof(LYRIC_NODE));
             node->time = time;
@@ -137,39 +68,35 @@ LYRIC *parseLrc(const char *file)
             node->prev = NULL;
             node->next = NULL;
             //歌词链表
-            if (lyric->head == NULL)
+            if (head == NULL)
             {
-                lyric->head = node;
+                head = node;
             }
             else
             {
-                lyric->tail->next = node;
-                node->prev = lyric->tail;
+                prev->next = node;
+                node->prev = prev;
             }
-            lyric->tail = node;
+            prev = node;
         }
     }
-    regfree(&infoReg);
     regfree(&lyricReg);
     fclose(fp);
-    return lyric;
+    return head;
 }
 
 //释放内存
-void lyricFree(LYRIC *lyric)
+void lyricFree(LYRIC_NODE *lyric)
 {
     if (lyric == NULL)
     {
         return;
     }
-    for (LYRIC_NODE *h = lyric->head; h != NULL;)
+    for (LYRIC_NODE *h = lyric; h != NULL;)
     {
         LYRIC_NODE *temp = h;
         h = h->next;
         free(temp->lyric);
         free(temp);
     }
-    free(lyric->artist);
-    free(lyric->title);
-    free(lyric);
 }

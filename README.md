@@ -40,7 +40,7 @@ mp3文件需要放置在`assets/music/`中，对应的歌词文件需要放置�
 
 ## 运行结果
 
-![run](https://www.jianguoyun.com/c/tblv2/WNUupIznDMWlkAppuaW6W463VqIVSQ9dCP1bSfGTsR2AlyKzO4rnfkEP6XRK63d3tH4-dp5I/n9GMukNSySE5axvDHszv0g/l)
+![run](http://i0.hdslb.com/bfs/album/004e92c07cccd7f76269001273fcd1cdfe6fdfa6.png)
 
 ## 图像来源
 
